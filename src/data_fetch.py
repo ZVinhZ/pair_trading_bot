@@ -12,6 +12,8 @@ class DataFetcher:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents = True, exist_ok = True)
 
+    # Optional[pd.Series] might returns pd.Series or None
+    # Avoid crashing, return None instead when failing to produce Data
     def fetch_close_series(self, ticker: str, start: str, end: str, auto_adjust: bool = False) -> Optional[pd.Series]:
         """
         Download Close price series
