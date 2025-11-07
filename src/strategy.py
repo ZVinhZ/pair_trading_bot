@@ -42,3 +42,45 @@ class PairStrategy:
         zscore_spread = (spread - rolling_mean) / rolling_std
         zscore_spread.name = "zscore_spread"
         return zscore_spread
+    
+    def generate_signals(self, series_x: pd.Series, series_y: pd.Series) -> pd.DataFrame:
+        """
+        Generate trading signals based on z-score thresholds
+        Returns DataFrame of Signal dataclass instances
+        """
+        spread = self.compute_spread(series_x, series_y)
+        zscore_spread = self.zscore(spread)
+
+        df = pd.DataFrame({"series_x": series_x, "series_y": series_y, "spread": spread, "zscore_spread": zscore_spread}).dropna()
+        signals = []
+        position = 0 # 0 = flat, 1 = long spread (long y, short x), -1 = short spread
+
+        for idx, row in df.iterrows():
+            zscore_value = row["zscore_spread"]
+
+            if position == 0:
+                # if spread too high => short spread
+                if zscore_value > self.entry_zscore:
+                    # Enter short spread: short y, long x
+                    signals.append(Signal(timestamp = idx, side = "enter_short_spread", price_x = row["series_x"], price_y = row["series_y"], zscore = zscore_value))
+                    position = -1
+                # if spread too low => long spread
+                elif zscore_value < -self.entry_zscore:
+                    # Enter long spread: long y, short x
+                    signals.append(Signal(timestamp = idx, side = "enter_long_spread", price_x = row["series_x"], price_y = row["series_y"], zscore = zscore_value))
+                    position = 1        
+            elif position == 1:
+                if abs(zscore_value) < self.exit_zscore:
+                    # Exit long spread because z-score reverted from low value to neutral
+                    signals.append(Signal(timestamp = idx, side = "exit", price_x = row["series_x"], price_y = row["series_y"], zscore = zscore_value))
+                    position = 0
+            elif position == -1:
+                if abs(zscore_value) < self.exit_zscore:
+                    # Exit short spread because z-score reverted from high value to neutral 
+                    signals.append(Signal(timestamp = idx, side = "exit", price_x = row["series_x"], price_y = row["series_y"], zscore = zscore_value))
+                    position = 0
+
+        # return as DataFrame
+        # s.__dict__ converts dataclass instance (variable) stored inside s to dictionary
+    
+        return pd.DataFrame([s.__dict__ for s in signals]).set_index("timestamp")
